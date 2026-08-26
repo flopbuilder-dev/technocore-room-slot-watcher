@@ -1,486 +1,320 @@
-\# FLOP / Technocore Room-Slot Watcher for Windows
-
-
-
-A simple Windows/Python helper for Technocore users who already have an Ed25519 `did:key` identity but cannot create a new room because the Technocore room limit is full.
-
-
-
-The watcher:
-
-
-
-\* unlocks your existing encrypted private key once
-
-\* keeps the unlocked key only in memory
-
-\* retries room creation automatically
-
-\* signs every room-creation attempt with your DID
-
-\* stops immediately when the room is successfully created
-
-\* does \*\*not\*\* save your private-key password inside the script
-
-
-
-\## Important safety
-
-
-
-Never put your private-key password, seed, or unencrypted private key inside this script, README, GitHub repository, Technocore message, or any public location.
-
-
-
-Keep this file private:
-
-
-
-`agent\_private\_key.pem`
-
-
-
-Your public identifier:
-
-
-
-`did:key:z6Mk...`
-
-
-
-is safe to publish.
-
-
-
-\## Requirements
-
-
-
-\* Windows 10 or Windows 11
-
-\* Python 3
-
-\* Python package: `cryptography`
-
-\* an existing Ed25519 `did:key`
-
-\* an encrypted private-key file named:
-
-
-
-`agent\_private\_key.pem`
-
-
-
-\* a text file containing your public DID named:
-
-
-
-`agent\_did.txt`
-
-
-
-The watcher expects these files to be in the same working folder as the script.
-
-
-
-\## Install the Python dependency
-
-
-
-Open PowerShell and run:
-
-
+# Technocore Room-Slot Watcher
+
+A Windows/Python helper for creating an Ed25519 `did:key` signed Technocore room when room capacity is constrained.
+
+The watcher safely waits for room availability, signs creation attempts with your existing DID, respects live Technocore rate limits, and stops automatically when the room succeeds.
+
+## V2 features
+
+- command-line room selection
+- Technocore room-name validation
+- `--dry-run` mode that loads no key and sends no request
+- encrypted Ed25519 private-key support
+- verifies the private key matches `agent_did.txt`
+- detects an already-existing room before sending a write
+- reads current Technocore limits from `/.well-known/agent.json`
+- automatically handles room-cap errors
+- automatically handles HTTP `429` rate limits
+- configurable retry interval
+- optional maximum-attempt limit
+- graceful network-error retries
+- password used only to unlock the key in memory
+- private-key password is never saved by the watcher
+
+## Requirements
+
+- Windows 10 or Windows 11
+- Python 3
+- Python package `cryptography`
+- an existing Ed25519 `did:key`
+- encrypted private key
+- public DID file
+
+Install the dependency:
 
 ```powershell
-
 python -m pip install cryptography
-
 ```
 
+## Identity files
 
-
-If `cryptography` is already installed, pip will report that the requirement is already satisfied.
-
-
-
-\## Files
-
-
-
-Your working folder should contain:
-
-
+The watcher expects:
 
 ```text
-
-watch\_room.py
-
-agent\_did.txt
-
-agent\_private\_key.pem
-
+agent_did.txt
+agent_private_key.pem
 ```
 
+These files should remain private and should **never** be committed to GitHub.
 
+`agent_did.txt` contains the public DID.
 
 Example:
 
-
-
 ```text
-
-C:\\Users\\YOURNAME\\Documents\\flop-agent\\
-
-```
-
-
-
-\## Configure your room
-
-
-
-Open `watch\_room.py`.
-
-
-
-Find:
-
-
-
-```python
-
-ROOM = "floppy-yourroom"
-
-```
-
-
-
-Change it to the room name you want to create.
-
-
-
-Technocore room names should use lowercase letters, numbers, hyphens, or underscores.
-
-
-
-Example:
-
-
-
-```python
-
-ROOM = "floppy-a1b2c3d4"
-
-```
-
-
-
-Then find:
-
-
-
-```python
-
-TEXT = "room opened by did:key:YOUR\_DID via the $FLOPPY terminal"
-
-```
-
-
-
-Replace `YOUR\_DID` with your own public DID.
-
-
-
-Example format:
-
-
-
-```text
-
 did:key:z6Mk...
-
 ```
 
+`agent_private_key.pem` contains the encrypted Ed25519 private key.
 
+Never publish:
 
-Never put your private key or seed in the `TEXT` value.
+- private-key password
+- private-key seed
+- unencrypted private key
+- `agent_private_key.pem`
 
-
-
-\## Check the script before running it
-
-
-
-Open PowerShell in the folder containing the files and run:
-
-
-
-```powershell
-
-python -m py\_compile .\\watch\_room.py
-
-```
-
-
-
-If nothing appears, the Python syntax is valid.
-
-
-
-\## Start the watcher
-
-
+## Basic usage
 
 Run:
 
-
-
 ```powershell
-
-python .\\watch\_room.py
-
+python .\watch_room.py ROOM_NAME
 ```
-
-
-
-The script asks for:
-
-
-
-```text
-
-Private-key password:
-
-```
-
-
-
-Enter the password for your encrypted private key and press Enter.
-
-
-
-The password is used to unlock the key in memory. It is not written into the watcher file.
-
-
-
-You should then see something similar to:
-
-
-
-```text
-
-Key unlocked. Watching for a free room slot...
-
-Room: floppy-a1b2c3d4
-
-
-
-Checking: 2026-08-25 18:45:56
-
-No free slot yet. Trying again in 5 seconds...
-
-```
-
-
-
-The watcher will continue checking automatically.
-
-
-
-\## When the server is full
-
-
-
-Technocore may return:
-
-
-
-```text
-
-400 room limit reached
-
-```
-
-
-
-This does not mean your DID or signature is broken.
-
-
-
-It means the server currently cannot create another new room.
-
-
-
-The watcher waits and retries automatically instead of requiring you to repeatedly enter your private-key password.
-
-
-
-\## Successful result
-
-
-
-When a room slot becomes available, the watcher should stop and show:
-
-
-
-```text
-
-ROOM CREATED SUCCESSFULLY!
-
-```
-
-
-
-The Technocore response should then show your new room and its first signed message.
-
-
 
 Example:
 
-
-
-```text
-
-\# room floppy-a1b2c3d4  messages 1  range 1..1
-
-
-
-\[1] <z6Mk…> room opened by did:key:z6Mk... via the $FLOPPY terminal
-
+```powershell
+python .\watch_room.py floppy-example
 ```
 
+The script asks for the encrypted private-key password once.
 
+It then verifies that the private key matches the DID before sending anything.
 
-At this point the watcher has finished its job.
+## Use an identity stored somewhere else
 
+The public GitHub project should not contain your identity files.
 
+Point the watcher to another folder with:
 
-Do not continue running it after the room has been created.
-
-
-
-\## Keeping Windows awake
-
-
-
-If you want the watcher to run while you are away from the computer:
-
-
-
-1\. Keep the laptop plugged in.
-
-2\. Open:
-
-
-
-```text
-
-Settings → System → Power \& battery → Screen, sleep \& hibernate timeouts
-
+```powershell
+python .\watch_room.py floppy-example --identity-dir "C:\path\to\identity"
 ```
 
+Example:
 
-
-3\. Under \*\*Plugged in\*\*, set:
-
-
-
-```text
-
-Make my device sleep after → Never
-
-Make my device hibernate after → Never
-
+```powershell
+python .\watch_room.py floppy-example --identity-dir "$HOME\Documents\flop-agent"
 ```
 
+## Dry run
 
+Validate a room name without loading a DID, loading a private key, or sending any network request:
 
-The screen itself can still turn off after a few minutes.
+```powershell
+python .\watch_room.py test-room --dry-run
+```
 
+Example output:
 
+```text
+DRY RUN OK
+Room: test-room
+Room name is valid.
+No key was loaded.
+No network request was sent.
+```
 
-The PowerShell window must remain open while the watcher is running.
+## Room-name rules
 
+Technocore room names must:
 
+- begin with a lowercase letter or number
+- contain only lowercase letters, numbers, hyphens, or underscores
+- contain no more than 48 characters
 
-\## Why this exists
+Invalid example:
 
+```text
+BAD ROOM
+```
 
+Valid examples:
 
-When Technocore reaches its room limit, manually retrying room creation is inconvenient because an encrypted Ed25519 private key normally requires the user to enter the password again for every new process.
+```text
+floppy-agent
+agent_01
+room123
+```
 
+## Already-existing room protection
 
+Before attempting creation, V2 reads the requested room directly.
 
-This watcher:
+If it already contains messages, the watcher stops with:
 
+```text
+ROOM ALREADY EXISTS
+No signed write was sent.
+```
 
+This helps prevent accidental duplicate activity.
 
-1\. asks for the password once
+## Live Technocore limits
 
-2\. unlocks the existing key
+V2 reads:
 
-3\. keeps the unlocked key in memory
+```text
+https://technocore.chat/.well-known/agent.json
+```
 
-4\. generates a fresh increasing nonce
+and displays current server limits such as:
 
-5\. signs the Technocore message
+```text
+Technocore live limits:
+  Room cap: 10240
+  Writes/min/IP: 300
+```
 
-6\. attempts room creation
+The watcher can automatically increase an overly aggressive retry interval based on the published live write limit.
 
-7\. waits when the server is full
+## Retry interval
 
-8\. automatically stops when creation succeeds
+Default:
 
+```text
+5 seconds
+```
 
+Choose another interval with:
 
-\## Security notes
+```powershell
+python .\watch_room.py floppy-example --interval 10
+```
 
+## Maximum attempts
 
+By default the watcher continues until:
 
-The script should never:
+- the room succeeds
+- the user presses Ctrl+C
+- an unexpected Technocore error occurs
 
+For testing, limit the number of attempts:
 
+```powershell
+python .\watch_room.py floppy-example --max-attempts 1
+```
 
-\* print your private key
+Use `0` for unlimited attempts.
 
-\* print your seed
+## Rate-limit handling
 
-\* save your password
+If Technocore returns HTTP `429`, V2 attempts to use the server-provided retry delay.
 
-\* upload your private-key file
+The watcher waits before trying again instead of continuously hammering the service.
 
-\* put secrets inside a Technocore message
+## Room-cap handling
 
-\* publish `agent\_private\_key.pem`
+If Technocore returns:
 
+```text
+400 room limit reached
+```
 
+the watcher waits for the configured interval and tries again.
 
-Before sharing this project publicly, check the folder carefully and make sure it contains \*\*no private keys, seeds, passwords, personal files, or credentials\*\*.
+When a slot becomes available, the signed room creation can succeed automatically.
 
+## Signed message
 
+The first room message is generated automatically from the DID:
 
-A public DID is safe to include.
+```text
+room opened by did:key:z6Mk... via the $FLOPPY terminal
+```
 
+The signature payload follows Technocore's signed-message format:
 
+```text
+room|nonce|text
+```
 
-A private key is not.
+The signature uses Ed25519 and is encoded using unpadded base64url.
 
+## DID/private-key verification
 
+V2 derives the Ed25519 public key from the unlocked private key and reconstructs its `did:key`.
 
-\## Disclaimer
+If that derived DID does not exactly match `agent_did.txt`, the watcher stops before sending anything:
 
+```text
+ERROR: Private key does not match agent_did.txt.
+No request was sent.
+```
 
+This protects against accidentally signing with the wrong identity.
 
-Technocore is an evolving service and its limits, API behaviour, room-retention rules, or FLOP onboarding process may change.
+## Successful result
 
+When creation succeeds:
 
+```text
+ROOM CREATED SUCCESSFULLY!
+```
 
-Check the current Technocore documentation before relying on this helper for future onboarding.
+The Technocore response should show the new room and signed message.
 
+The watcher then stops automatically.
 
+## Stop manually
 
-This tool is intended as a small convenience utility for legitimate Technocore participation, not for flooding or abusing the service.
+Press:
 
+```text
+Ctrl+C
+```
 
+The watcher exits cleanly.
 
+## Security
+
+This project should never contain:
+
+```text
+agent_private_key.pem
+agent_did.txt
+.env
+*.key
+*.seed
+```
+
+The included `.gitignore` helps prevent accidental commits of sensitive files.
+
+Always review `git status` before pushing changes.
+
+A public DID is safe to publish.
+
+A private key, seed, and password are not.
+
+## Why this tool exists
+
+Technocore can reach its configured room capacity.
+
+Without a watcher, users may repeatedly:
+
+1. unlock their key
+2. create a nonce
+3. sign the message
+4. attempt room creation
+5. receive a room-cap error
+6. repeat everything manually
+
+This watcher automates that process while keeping the encrypted identity local.
+
+V2 adds additional validation and safety so that automation does not become uncontrolled request spam.
+
+## Disclaimer
+
+Technocore and FLOP infrastructure are evolving systems.
+
+API behavior, limits, retention rules, onboarding requirements, and FLOP participation criteria may change.
+
+Always verify current official documentation before relying on this tool.
+
+This software does not guarantee eligibility for, allocation of, or receipt of any FLOP token or airdrop.
+
+## License
+
+MIT License.
