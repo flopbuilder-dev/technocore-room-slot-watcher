@@ -1,0 +1,8 @@
+agent_private_key.pem
+agent_did.txt
+*.pem
+*.key
+*.seed
+*.env
+__pycache__/
+*.pyc
