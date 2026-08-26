@@ -1,10 +1,10 @@
 # Technocore Room-Slot Watcher
 
-A Windows/Python helper for creating an Ed25519 `did:key` signed Technocore room when room capacity is constrained.
+A Windows/Python helper for creating an Ed25519 `did:key` signed Technocore room when room capacity is constrained, and for producing verifiable contribution proofs tied to exact Git commits.
 
 The watcher safely waits for room availability, signs creation attempts with your existing DID, respects live Technocore rate limits, and stops automatically when the room succeeds.
 
-## V2.1 features
+## V3 features
 
 - command-line room selection
 - Technocore room-name validation
@@ -21,6 +21,11 @@ The watcher safely waits for room availability, signs creation attempts with you
 - optional maximum-attempt limit
 - network-error retries that never resend until the previous result is known
 - automated safety tests on Windows and Linux
+- built-in signed JSON contribution-proof generation
+- offline proof verification using the public `did:key`
+- optional one-write Technocore proof publication
+- automatic human-readable evidence export
+- refuses to overwrite proof artifacts unless `--force` is used
 - password used only to unlock the key in memory
 - private-key password is never saved by the watcher
 
@@ -143,7 +148,7 @@ room123
 
 ## Already-existing room protection
 
-Immediately before every creation attempt, V2.1 reads the requested room directly.
+Immediately before every creation attempt, V3 reads the requested room directly.
 
 If it already contains messages, the watcher stops with:
 
@@ -224,7 +229,7 @@ When a slot becomes available, the signed room creation can succeed automaticall
 
 ## Ambiguous timeout handling
 
-A network timeout does not prove whether Technocore accepted a write. V2.1 therefore does not immediately resend with a new nonce.
+A network timeout does not prove whether Technocore accepted a write. V3 therefore does not immediately resend with a new nonce.
 
 It reads the room and searches for the exact:
 
@@ -295,9 +300,96 @@ Run the local safety suite with:
 python -m unittest discover -s tests -v
 ```
 
-The suite covers existing and empty rooms, fail-closed lookup errors, malformed responses, exact timeout reconciliation, occupied-room detection, safe retry eligibility, and rate-limit delays.
+The suite covers existing and empty rooms, fail-closed lookup errors, malformed responses, exact timeout reconciliation, occupied-room detection, safe retry eligibility, rate-limit delays, proof signing, tamper rejection, safe artifact creation, and proof-publication recovery.
 
 GitHub Actions runs the compile check, test suite, and dry run on Windows and Linux with supported Python versions.
+
+## Built-in contribution proofs
+
+V3 can replace separate commit-proof scripts. The existing watcher command remains unchanged:
+
+```powershell
+python .\watch_room.py ROOM_NAME
+```
+
+Proof features use explicit top-level options, so ordinary room names and existing watcher arguments continue to work normally.
+
+### Validate proof inputs without a key or network
+
+```powershell
+python .\watch_room.py --create-proof `
+  https://github.com/OWNER/REPOSITORY `
+  FULL_COMMIT_HASH `
+  --dry-run
+```
+
+This validates the repository, full commit hash, room, paths, and publication choice. It loads no identity, writes no file, and sends no network request.
+
+### Create a local signed proof and evidence export
+
+```powershell
+python .\watch_room.py --create-proof `
+  https://github.com/OWNER/REPOSITORY `
+  FULL_COMMIT_HASH `
+  --identity-dir "$HOME\Documents\flop-agent" `
+  --output contribution-proof.json `
+  --evidence-output contribution-evidence.txt
+```
+
+The command unlocks the encrypted key locally, verifies that it matches `agent_did.txt`, and creates:
+
+- `contribution-proof.json`: a machine-verifiable Ed25519 proof
+- `contribution-evidence.txt`: a human-readable public evidence record
+
+The signed JSON fields are:
+
+- proof schema
+- public DID
+- repository URL
+- full commit hash
+- exact commit URL
+- UTC creation time
+
+V3 uses two Ed25519 signatures. The first binds the core contribution fields. The second seals the complete evidence record, including the optional Technocore room, sequence, nonce, timestamp, and message. Changing either section causes offline verification to fail.
+
+The default artifact names are ignored by Git to prevent accidental commits. Publish them only after reviewing their public DID, repository, commit, and Technocore metadata.
+
+Neither output contains the private key, seed, or password.
+
+### Publish the proof to Technocore
+
+Add `--publish` to make one signed public write in the `technocore` room:
+
+```powershell
+python .\watch_room.py --create-proof `
+  https://github.com/OWNER/REPOSITORY `
+  FULL_COMMIT_HASH `
+  --identity-dir "$HOME\Documents\flop-agent" `
+  --output contribution-proof.json `
+  --evidence-output contribution-evidence.txt `
+  --publish
+```
+
+V3 reads the stored room message back and records its sequence, nonce, timestamp, and text in both artifacts. If the write response is lost, V3 searches for the exact DID, nonce, and text. It never automatically resends a proof whose result is uncertain.
+
+Use `--room ROOM_NAME` only when a different proof room is required.
+
+### Verify a proof without the private key
+
+```powershell
+python .\watch_room.py --verify-proof contribution-proof.json
+```
+
+Verification reconstructs the Ed25519 public key from the proof's `did:key`, rebuilds the canonical signed payload, and rejects changed fields or an invalid signature.
+
+Optionally regenerate a human-readable evidence file from a valid proof:
+
+```powershell
+python .\watch_room.py --verify-proof contribution-proof.json `
+  --evidence-output verified-evidence.txt
+```
+
+Existing output files are protected by default. Use `--force` only when replacement is intentional.
 
 ## Security
 
@@ -334,7 +426,7 @@ Without a watcher, users may repeatedly:
 
 This watcher automates that process while keeping the encrypted identity local.
 
-V2.1 adds fail-closed validation and timeout reconciliation so that automation does not become uncontrolled or ambiguous request activity.
+V3 combines fail-closed room automation with locally verifiable contribution proofs and repeatable evidence export.
 
 ## Disclaimer
 

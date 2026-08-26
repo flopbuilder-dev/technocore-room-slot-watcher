@@ -35,3 +35,10 @@ jobs:
 
       - name: Dry run
         run: python watch_room.py test-room --dry-run
+
+      - name: Proof dry run
+        run: >-
+          python watch_room.py --create-proof
+          https://github.com/example/project
+          0123456789abcdef0123456789abcdef01234567
+          --dry-run

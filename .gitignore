@@ -6,3 +6,5 @@ agent_did.txt
 *.env
 __pycache__/
 *.pyc
+contribution-proof.json
+contribution-evidence.txt
