@@ -17,6 +17,13 @@ BASE_URL = "https://technocore.chat"
 ROOM_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,47}")
 DID_PATTERN = re.compile(r"did:key:z[1-9A-HJ-NP-Za-km-z]{40,60}")
 B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+WRITE_CONFIRMED = "confirmed"
+ROOM_OCCUPIED = "occupied"
+WRITE_ABSENT = "absent"
+
+
+class RoomLookupError(RuntimeError):
+    """Raised when Technocore room state cannot be confirmed safely."""
 
 
 def base58_encode(data: bytes) -> str:
@@ -52,58 +59,70 @@ def fetch_live_limits() -> dict:
         return {}
 
 
-def public_room_exists(room: str) -> bool:
+def fetch_room_snapshot(room: str, limit: int = 200) -> dict:
     url = (
         BASE_URL
         + "/r/"
         + urllib.parse.quote(room, safe="")
-        + "?limit=1&format=json&n="
+        + f"?limit={limit}&format=json&n="
         + str(int(time.time() * 1000))
     )
 
     try:
         with urllib.request.urlopen(url, timeout=15) as response:
             data = json.loads(response.read().decode("utf-8"))
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+    ) as error:
+        raise RoomLookupError(str(error)) from error
 
-        return int(data.get("last_seq", 0)) > 0
-
-    except Exception:
-        return False
-    # Private p-* rooms are deliberately absent from /rooms.
-    if room.startswith("p-"):
-        return False
-
-    url = (
-        BASE_URL
-        + "/rooms?limit=10000&format=json&n="
-        + str(int(time.time() * 1000))
-    )
+    if not isinstance(data, dict):
+        raise RoomLookupError("Technocore returned an unexpected room response.")
 
     try:
-        with urllib.request.urlopen(url, timeout=15) as response:
-            data = json.loads(response.read().decode("utf-8"))
+        last_seq = int(data.get("last_seq", 0))
+    except (TypeError, ValueError) as error:
+        raise RoomLookupError("Technocore returned an invalid last_seq value.") from error
 
-        if isinstance(data, dict):
-            rooms = data.get("rooms", [])
-        elif isinstance(data, list):
-            rooms = data
-        else:
-            return False
+    messages = data.get("messages", [])
 
-        for entry in rooms:
-            if isinstance(entry, str) and entry == room:
-                return True
+    if not isinstance(messages, list):
+        raise RoomLookupError("Technocore returned an invalid messages value.")
 
-            if isinstance(entry, dict):
-                name = entry.get("name") or entry.get("room")
-                if name == room:
-                    return True
+    data["last_seq"] = last_seq
+    return data
 
-    except Exception:
-        # Failure to check must not be treated as proof that a room exists.
-        pass
 
-    return False
+def public_room_exists(room: str) -> bool:
+    return fetch_room_snapshot(room, limit=1)["last_seq"] > 0
+
+
+def reconcile_ambiguous_write(
+    room: str,
+    did: str,
+    nonce: str,
+    text: str,
+) -> str:
+    snapshot = fetch_room_snapshot(room, limit=200)
+
+    for message in snapshot["messages"]:
+        if not isinstance(message, dict):
+            continue
+
+        if (
+            message.get("from") == did
+            and str(message.get("nonce")) == nonce
+            and message.get("text") == text
+        ):
+            return WRITE_CONFIRMED
+
+    if snapshot["last_seq"] > 0:
+        return ROOM_OCCUPIED
+
+    return WRITE_ABSENT
 
 
 def retry_after_seconds(error: urllib.error.HTTPError, body: str) -> float:
@@ -302,13 +321,6 @@ def main():
         print("WARNING: Could not fetch Technocore live limits.")
         print(f"Using requested interval: {interval:g}s")
 
-    print()
-
-    if public_room_exists(room):
-        print("ROOM ALREADY EXISTS")
-        print("No signed write was sent.")
-        raise SystemExit(3)
-
     text = f"room opened by {did} via the $FLOPPY terminal"
 
     print("Key unlocked and DID verified.")
@@ -324,6 +336,23 @@ def main():
             if args.max_attempts and attempt >= args.max_attempts:
                 print("Maximum attempts reached. No room was created.")
                 raise SystemExit(4)
+
+            try:
+                room_exists = public_room_exists(room)
+            except RoomLookupError as error:
+                print(
+                    "Room status could not be confirmed. "
+                    "No signed write will be sent."
+                )
+                print("Reason:", error)
+                print(f"Rechecking in {interval:g}s...")
+                time.sleep(interval)
+                continue
+
+            if room_exists:
+                print("ROOM ALREADY EXISTS")
+                print("No signed write was sent.")
+                raise SystemExit(3)
 
             attempt += 1
 
@@ -408,18 +437,56 @@ def main():
                 print(body)
                 raise SystemExit(5)
 
-            except urllib.error.URLError as error:
+            except (urllib.error.URLError, TimeoutError) as error:
                 wait_seconds = max(interval, 10.0)
 
                 print(
-                    "Network error:",
+                    "Network error after sending the request:",
                     getattr(error, "reason", error),
                 )
-                print(
-                    f"Retrying in {wait_seconds:g}s..."
-                )
+                print("The write result is uncertain. Verifying the room...")
 
-                time.sleep(wait_seconds)
+                while True:
+                    try:
+                        outcome = reconcile_ambiguous_write(
+                            room,
+                            did,
+                            nonce,
+                            text,
+                        )
+                    except RoomLookupError as lookup_error:
+                        print(
+                            "Could not verify the previous write. "
+                            "No additional write will be sent."
+                        )
+                        print("Reason:", lookup_error)
+                        print(f"Rechecking in {wait_seconds:g}s...")
+                        time.sleep(wait_seconds)
+                        continue
+
+                    if outcome == WRITE_CONFIRMED:
+                        print()
+                        print("ROOM CREATED SUCCESSFULLY!")
+                        print("Confirmed by DID, nonce, and text after timeout.")
+                        print("\a")
+                        return
+
+                    if outcome == ROOM_OCCUPIED:
+                        print()
+                        print("ROOM NOW EXISTS")
+                        print(
+                            "The uncertain write was not found. "
+                            "No additional signed write was sent."
+                        )
+                        raise SystemExit(6)
+
+                    print(
+                        "The previous write was not found and the room "
+                        "is still empty."
+                    )
+                    print(f"Retrying in {wait_seconds:g}s...")
+                    time.sleep(wait_seconds)
+                    break
 
     except KeyboardInterrupt:
         print()

@@ -4,20 +4,23 @@ A Windows/Python helper for creating an Ed25519 `did:key` signed Technocore room
 
 The watcher safely waits for room availability, signs creation attempts with your existing DID, respects live Technocore rate limits, and stops automatically when the room succeeds.
 
-## V2 features
+## V2.1 features
 
 - command-line room selection
 - Technocore room-name validation
 - `--dry-run` mode that loads no key and sends no request
 - encrypted Ed25519 private-key support
 - verifies the private key matches `agent_did.txt`
-- detects an already-existing room before sending a write
+- checks for an already-existing room immediately before every write
+- fails closed when room state cannot be confirmed
+- reconciles ambiguous network timeouts by matching DID, nonce, and text
 - reads current Technocore limits from `/.well-known/agent.json`
 - automatically handles room-cap errors
 - automatically handles HTTP `429` rate limits
 - configurable retry interval
 - optional maximum-attempt limit
-- graceful network-error retries
+- network-error retries that never resend until the previous result is known
+- automated safety tests on Windows and Linux
 - password used only to unlock the key in memory
 - private-key password is never saved by the watcher
 
@@ -33,7 +36,7 @@ The watcher safely waits for room availability, signs creation attempts with you
 Install the dependency:
 
 ```powershell
-python -m pip install cryptography
+python -m pip install -r requirements.txt
 ```
 
 ## Identity files
@@ -140,7 +143,7 @@ room123
 
 ## Already-existing room protection
 
-Before attempting creation, V2 reads the requested room directly.
+Immediately before every creation attempt, V2.1 reads the requested room directly.
 
 If it already contains messages, the watcher stops with:
 
@@ -149,7 +152,9 @@ ROOM ALREADY EXISTS
 No signed write was sent.
 ```
 
-This helps prevent accidental duplicate activity.
+If the read fails or returns an invalid response, the watcher sends nothing. It waits and checks again until the room state can be confirmed.
+
+This fail-closed behavior helps prevent accidental duplicate activity. Technocore does not currently provide an atomic create-only-if-absent operation, so another caller could still create the same room in the small interval between the final check and the write. Use a distinctive room name to reduce that race.
 
 ## Live Technocore limits
 
@@ -213,9 +218,23 @@ If Technocore returns:
 400 room limit reached
 ```
 
-the watcher waits for the configured interval and tries again.
+the watcher waits for the configured interval, rechecks that the room is still empty, and only then tries again.
 
 When a slot becomes available, the signed room creation can succeed automatically.
+
+## Ambiguous timeout handling
+
+A network timeout does not prove whether Technocore accepted a write. V2.1 therefore does not immediately resend with a new nonce.
+
+It reads the room and searches for the exact:
+
+- DID
+- nonce
+- message text
+
+If all three match, the watcher reports that creation was confirmed after the timeout and stops successfully.
+
+If another message has appeared, the watcher stops without sending anything else. If the room read also fails, it continues read-only verification until the outcome can be determined.
 
 ## Signed message
 
@@ -268,6 +287,18 @@ Ctrl+C
 
 The watcher exits cleanly.
 
+## Automated tests
+
+Run the local safety suite with:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+The suite covers existing and empty rooms, fail-closed lookup errors, malformed responses, exact timeout reconciliation, occupied-room detection, safe retry eligibility, and rate-limit delays.
+
+GitHub Actions runs the compile check, test suite, and dry run on Windows and Linux with supported Python versions.
+
 ## Security
 
 This project should never contain:
@@ -303,7 +334,7 @@ Without a watcher, users may repeatedly:
 
 This watcher automates that process while keeping the encrypted identity local.
 
-V2 adds additional validation and safety so that automation does not become uncontrolled request spam.
+V2.1 adds fail-closed validation and timeout reconciliation so that automation does not become uncontrolled or ambiguous request activity.
 
 ## Disclaimer
 
