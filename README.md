@@ -29,6 +29,42 @@ The watcher safely waits for room availability, signs creation attempts with you
 - password used only to unlock the key in memory
 - private-key password is never saved by the watcher
 
+## V3.1 browser verifier
+
+V3.1 adds a static, privacy-preserving verifier for V3 contribution-proof JSON files:
+
+<https://flopbuilder-dev.github.io/technocore-room-slot-watcher/>
+
+The verifier:
+
+- runs entirely in the browser with the Web Crypto API
+- verifies the contribution-proof and Technocore record Ed25519 signatures independently
+- uses the same DID decoding, canonical JSON, text normalization, and unpadded base64url format as the released V3 Python verifier
+- accepts a selected or drag-and-dropped `.json` proof
+- distinguishes malformed or unsupported proof data from cryptographically invalid signatures
+- requires no private key, account, backend, GitHub lookup, Technocore lookup, analytics service, or verification API
+- keeps the selected proof in browser memory and never uploads it
+- continues to verify an already-loaded proof when the internet is unavailable
+
+The released `technocore-room-slot-watcher-v3.0.0-proof.json` is retained as the known-good compatibility fixture. Automated tests also cover modified text, nonce, room, commit, DID, both signatures, missing fields, unsupported schemas, malformed encodings, and invalid JSON.
+
+### Run the verifier locally
+
+```powershell
+cd .\verifier
+pnpm install --frozen-lockfile
+pnpm test
+pnpm run dev
+```
+
+For the exact GitHub Pages static build:
+
+```powershell
+pnpm run build:pages
+```
+
+The deployable output is written to `verifier/dist-pages`. GitHub Actions tests that build before publishing it to GitHub Pages.
+
 ## Requirements
 
 - Windows 10 or Windows 11

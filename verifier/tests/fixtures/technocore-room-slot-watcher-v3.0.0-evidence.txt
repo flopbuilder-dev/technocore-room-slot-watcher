@@ -1,0 +1,21 @@
+TECHNOCORE CONTRIBUTION PROOF
+
+Schema: technocore-contribution-proof/v1
+DID: did:key:z6Mkpb14A5of2htSFBSDPhRqgbaehXzmQJ8Tqd67XBYZikZt
+Repository: https://github.com/flopbuilder-dev/technocore-room-slot-watcher
+Commit: c325d616c913ab64b0af3ef265f0b58e91eb275f
+Commit URL: https://github.com/flopbuilder-dev/technocore-room-slot-watcher/commit/c325d616c913ab64b0af3ef265f0b58e91eb275f
+Created at: 2026-08-26T13:08:17Z
+Signature algorithm: Ed25519
+Local signature: VALID
+Evidence-record signature: VALID
+
+Technocore publication: CONFIRMED
+Room: technocore
+Sequence: 302509
+Nonce: 1787749697038
+Timestamp: 2026-08-26T13:06:04.904352Z
+Message: Signed contribution proof: https://github.com/flopbuilder-dev/technocore-room-slot-watcher/commit/c325d616c913ab64b0af3ef265f0b58e91eb275f
+
+This file contains public verification data only.
+It does not contain a private key, seed, or password.

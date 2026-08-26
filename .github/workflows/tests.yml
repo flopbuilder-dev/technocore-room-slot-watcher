@@ -42,3 +42,36 @@ jobs:
           https://github.com/example/project
           0123456789abcdef0123456789abcdef01234567
           --dry-run
+
+  verifier:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    defaults:
+      run:
+        working-directory: verifier
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: verifier/pnpm-lock.yaml
+
+      - name: Install verifier dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run compatibility and tampering tests
+        run: pnpm test
+
+      - name: Build static verifier
+        run: pnpm run build:pages
