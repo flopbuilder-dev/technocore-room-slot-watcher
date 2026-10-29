@@ -17,7 +17,7 @@ jobs:
       run:
         shell: bash
     env:
-      UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
+      UV_CACHE_DIR: ${{ github.workspace }}/.uvcache
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - name: Checkout validation payload without persisted credentials
