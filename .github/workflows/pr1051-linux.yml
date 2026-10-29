@@ -43,8 +43,8 @@ jobs:
           git apply --check ../payload/qualification/pr1051-ruff-successor.patch
           git apply ../payload/qualification/pr1051-ruff-successor.patch
           printf '%s\n' \
-            "e310d3f6f354a7f890c335b100996027adf3fec0b1593e1ac54d68aa36599151  bench/dupe_filter.py" \
-            "e747dc31492b2ad6d567a0b359c88de0b5ce07a2adb3e019941ed581532ae978  tests/unit/test_dupe_filter_mixed_timestamps.py" | sha256sum -c -
+            "cf526df939c3810f99a5edbc6851413c31f3059f7c58c1891df7571980770007  bench/dupe_filter.py" \
+            "2cc2a78d659d4de83f534c6c5ee1ddd803b4260c12eb18956b6fcbf5fbf7f0de  tests/unit/test_dupe_filter_mixed_timestamps.py" | sha256sum -c -
           test "$(git diff --name-only)" = "$(printf '%s\n' bench/dupe_filter.py tests/unit/test_dupe_filter_mixed_timestamps.py)"
           git diff --check
           git diff --stat
