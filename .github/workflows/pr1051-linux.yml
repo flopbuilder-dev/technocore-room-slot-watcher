@@ -1,14 +1,16 @@
 name: PR1051 native Linux qualification
 
-# A single branch creation runs this job. Skip push CI on the upload commit.
-on: create
+# Only the authorized validation branch starts this single job.
+on:
+  push:
+    branches: [validation/pr1051-linux-c9312559]
 
 permissions:
   contents: read
 
 jobs:
   validate:
-    if: github.ref == 'refs/heads/validation/pr1051-linux-c9312559' && github.event.ref_type == 'branch'
+    if: github.ref == 'refs/heads/validation/pr1051-linux-c9312559'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:

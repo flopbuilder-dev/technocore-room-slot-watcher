@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   test:
+    if: github.ref != 'refs/heads/validation/pr1051-linux-c9312559'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -44,6 +45,7 @@ jobs:
           --dry-run
 
   verifier:
+    if: github.ref != 'refs/heads/validation/pr1051-linux-c9312559'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
