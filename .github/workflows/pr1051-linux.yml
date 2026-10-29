@@ -1,0 +1,128 @@
+name: PR1051 native Linux qualification
+
+# A single branch creation runs this job. Skip push CI on the upload commit.
+on: create
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/validation/pr1051-linux-c9312559' && github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout validation payload without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          path: payload
+      - name: Checkout pinned upstream parent
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: flop-labs/technocore-chat
+          ref: 0195710885e9f4bb9145ab8ae7e5d74b713b94b9
+          persist-credentials: false
+          path: upstream
+      - name: Verify parent, patch and resulting source hashes
+        working-directory: upstream
+        run: |
+          test "$(git rev-parse HEAD)" = 0195710885e9f4bb9145ab8ae7e5d74b713b94b9
+          echo "c93125596452a49e9b6851410ddcb60a0e892415f98716df55fdbc9804ba8683  ../payload/qualification/pr1051-ruff-successor.patch" | sha256sum -c -
+          printf '%s\n' \
+            "7856085f1b8aa7475f0c6669c11fc09d6751a092adb1f2685cae9e57f3cacf9e  bench/dupe_filter.py" \
+            "a913df5d656d72b520ff42835d0f1a7ec055045518ccaf4d80c17fc3a97225cb  tests/unit/test_dupe_filter_mixed_timestamps.py" | sha256sum -c -
+          git apply --check ../payload/qualification/pr1051-ruff-successor.patch
+          git apply ../payload/qualification/pr1051-ruff-successor.patch
+          printf '%s\n' \
+            "e310d3f6f354a7f890c335b100996027adf3fec0b1593e1ac54d68aa36599151  bench/dupe_filter.py" \
+            "e747dc31492b2ad6d567a0b359c88de0b5ce07a2adb3e019941ed581532ae978  tests/unit/test_dupe_filter_mixed_timestamps.py" | sha256sum -c -
+          test "$(git diff --name-only)" = "$(printf '%s\n' bench/dupe_filter.py tests/unit/test_dupe_filter_mixed_timestamps.py)"
+          git diff --check
+          git diff --stat
+          sha256sum uv.lock pyproject.toml .python-version
+      - name: Setup pinned uv and Python
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: "0.13.6"
+          python-version: "3.12.10"
+          enable-cache: false
+      - name: Frozen dependency setup and native environment check
+        working-directory: upstream
+        run: |
+          uv sync --frozen
+          test "$(uv run --frozen ruff --version)" = "ruff 0.16.8"
+          uv run --frozen python -c 'import sys,time,fcntl; assert sys.platform == "linux"; assert hasattr(time,"tzset"); print(sys.version); print(fcntl.__file__)'
+          git diff --exit-code -- uv.lock pyproject.toml
+      - name: Ruff
+        id: lint
+        continue-on-error: true
+        working-directory: upstream
+        run: uv run --frozen ruff check .
+      - name: Formatting
+        id: format
+        continue-on-error: true
+        working-directory: upstream
+        run: uv run --frozen ruff format --check .
+      - name: Typing
+        id: types
+        continue-on-error: true
+        working-directory: upstream
+        run: uv run --frozen ty check
+      - name: Size caps
+        id: caps
+        continue-on-error: true
+        working-directory: upstream
+        run: uv run --frozen python sz.py --caps
+      - name: Size ratchet diagnostic (pre-existing failure)
+        id: ratchet
+        continue-on-error: true
+        working-directory: upstream
+        run: uv run --frozen python sz.py --check
+      - name: Focused regression and adjacent limiter tests
+        id: focused
+        continue-on-error: true
+        working-directory: upstream
+        run: uv run --frozen python -m pytest tests/unit/test_dupe_filter_mixed_timestamps.py tests/unit/test_dupe_ring.py -q -ra
+      - name: Native POSIX DST regression
+        id: dst
+        continue-on-error: true
+        working-directory: upstream
+        run: uv run --frozen python -m pytest tests/unit/test_dupe_filter_mixed_timestamps.py::test_room_analysis_uses_utc_for_dst_boundary -v -ra
+      - name: Full tests with branch coverage
+        id: full
+        continue-on-error: true
+        working-directory: upstream
+        run: uv run --frozen coverage run -m pytest tests -q -ra
+      - name: Coverage threshold
+        id: coverage
+        continue-on-error: true
+        working-directory: upstream
+        run: uv run --frozen coverage report
+      - name: Record gate outcomes and preserve failures
+        if: always()
+        env:
+          LINT: ${{ steps.lint.outcome }}
+          FORMAT: ${{ steps.format.outcome }}
+          TYPES: ${{ steps.types.outcome }}
+          CAPS: ${{ steps.caps.outcome }}
+          RATCHET: ${{ steps.ratchet.outcome }}
+          FOCUSED: ${{ steps.focused.outcome }}
+          DST: ${{ steps.dst.outcome }}
+          FULL: ${{ steps.full.outcome }}
+          COVERAGE: ${{ steps.coverage.outcome }}
+        run: |
+          failed=0
+          for gate in LINT FORMAT TYPES CAPS FOCUSED DST FULL COVERAGE; do
+            echo "$gate=${!gate}" | tee -a "$GITHUB_STEP_SUMMARY"
+            if [[ "${!gate}" != success ]]; then failed=1; fi
+          done
+          echo "RATCHET=$RATCHET (diagnostic; prior base and candidate fail core/store.py 1029 -> 1030)" | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$failed"
+
