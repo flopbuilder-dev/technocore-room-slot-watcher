@@ -60,7 +60,7 @@ jobs:
         run: |
           uv sync --frozen
           test "$(uv run --frozen ruff --version)" = "ruff 0.16.8"
-          uv run --frozen python -c 'import sys,time,fcntl; assert sys.platform == "linux"; assert hasattr(time,"tzset"); print(sys.version); print(fcntl.__file__)'
+          uv run --frozen python -c 'import sys,time,fcntl; assert sys.platform == "linux"; assert hasattr(time,"tzset"); print(sys.version); print(getattr(fcntl,"__file__","built-in"))'
           git diff --exit-code -- uv.lock pyproject.toml
       - name: Ruff
         id: lint
